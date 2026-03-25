@@ -22,3 +22,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node / Frontend
+fleet-frontend/node_modules/
+fleet-frontend/dist/
