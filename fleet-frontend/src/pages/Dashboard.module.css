@@ -1,0 +1,120 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.summaryCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--shadow);
+}
+
+.cardLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.cardValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cardValueDanger {
+  color: #fc8181;
+}
+
+.section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.feedItem {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  gap: 12px;
+}
+
+.feedItem:last-child {
+  border-bottom: none;
+}
+
+.feedAsset {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.feedMeta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.feedDate {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.alertItem {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.alertItem:last-child {
+  border-bottom: none;
+}
+
+.alertReg {
+  font-weight: 600;
+  color: var(--color-amber);
+}
+
+.alertExpiry {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.sectionsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .sectionsRow {
+    grid-template-columns: 1fr;
+  }
+}
