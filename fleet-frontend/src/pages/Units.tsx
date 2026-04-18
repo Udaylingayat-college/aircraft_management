@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
+import client, { api } from "../api/client";
 import type { Unit } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
@@ -55,16 +55,27 @@ export function Units() {
   const [editing, setEditing] = useState<Unit | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
 
-  const load = useCallback(() => {
+  const load = useCallback(async (selectedStatus: string = statusFilter) => {
     setLoading(true);
-    api
-      .getUnits()
-      .then(setData)
-      .finally(() => setLoading(false));
+    try {
+      const params = selectedStatus ? { status: selectedStatus } : undefined;
+      const { data: units } = await client.get<Unit[]>("/units", { params });
+      setData(units);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    client.get<string[]>("/units/statuses").then((response) => setStatusOptions(response.data));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(statusFilter);
+  }, [load, statusFilter]);
 
   const openAdd = () => {
     setEditing(null);
@@ -89,7 +100,7 @@ export function Units() {
     try {
       await api.deleteUnit(row.Unit_id);
       setToast({ msg: "Unit deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -116,7 +127,7 @@ export function Units() {
         setToast({ msg: "Unit created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
@@ -127,18 +138,22 @@ export function Units() {
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Units</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Unit Types ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
         </div>
       </div>
       <DataTable
         columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
         data={data as unknown as Record<string, unknown>[]}
         rowKey={(r) => (r as unknown as Unit).Unit_id}
-        filters={[
-          { key: "Status", label: "All Statuses", options: ["Active", "Inactive"] },
-          { key: "Unit_type", label: "All Types", options: ["Fighter", "Transport", "Training", "Helicopter", "Reconnaissance"] },
-        ]}
         onAdd={openAdd}
         onEdit={(r) => openEdit(r as unknown as Unit)}
         onDelete={(r) => handleDelete(r as unknown as Unit)}

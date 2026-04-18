@@ -61,9 +61,11 @@ CREATE_TABLES = [
         Asset_name VARCHAR(100) NOT NULL,
         Category   VARCHAR(100),
         blocked_at VARCHAR(100),
+        Aircraft_id INT,
         Status     VARCHAR(50),
         `Condition`  VARCHAR(50),
-        Criticality VARCHAR(50)
+        Criticality VARCHAR(50),
+        FOREIGN KEY (Aircraft_id) REFERENCES Aircraft(Aircraft_id)
     )
     """,
     """
@@ -75,8 +77,10 @@ CREATE_TABLES = [
         Purpose           VARCHAR(200),
         State_after_return VARCHAR(100),
         Unit_id           INT,
+        Aircraft_id       INT,
         FOREIGN KEY (Serial_id) REFERENCES Asset(Asset_id),
-        FOREIGN KEY (Unit_id)   REFERENCES Unit(Unit_id)
+        FOREIGN KEY (Unit_id)   REFERENCES Unit(Unit_id),
+        FOREIGN KEY (Aircraft_id) REFERENCES Aircraft(Aircraft_id)
     )
     """,
     """
@@ -87,6 +91,16 @@ CREATE_TABLES = [
         Inspection_date DATE,
         Valid_till      DATE,
         FOREIGN KEY (Aircraft_id) REFERENCES Aircraft(Aircraft_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      full_name VARCHAR(100) NOT NULL,
+      email VARCHAR(150) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      role ENUM('admin', 'engineer', 'viewer') NOT NULL DEFAULT 'viewer',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
 ]

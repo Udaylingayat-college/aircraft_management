@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
-import type { Hangar, Unit } from "../api/client";
+import client, { api } from "../api/client";
+import type { Hangar, Unit, Aircraft } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import { FormDialog } from "../components/FormDialog";
@@ -39,14 +39,18 @@ export function Hangars() {
   const [editing, setEditing] = useState<Hangar | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [unitFilter, setUnitFilter] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selectedUnitId: string = unitFilter) => {
     setLoading(true);
     try {
-      const [hangars, unitList] = await Promise.all([api.getHangars(), api.getUnits()]);
-      setUnits(unitList);
-      // Count aircraft per hangar
-      const aircraftList = await api.getAircraft();
+      const params = selectedUnitId ? { unit_id: Number(selectedUnitId) } : undefined;
+      const [hangarsResp, aircraftResp] = await Promise.all([
+        client.get<Hangar[]>("/hangars", { params }),
+        client.get<Aircraft[]>("/aircraft"),
+      ]);
+      const hangars = hangarsResp.data;
+      const aircraftList = aircraftResp.data;
       const countMap: Record<number, number> = {};
       aircraftList.forEach((a) => {
         if (a.Hangar_id != null) {
@@ -59,9 +63,15 @@ export function Hangars() {
     } finally {
       setLoading(false);
     }
+  }, [unitFilter]);
+
+  useEffect(() => {
+    api.getUnits().then(setUnits);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(unitFilter);
+  }, [load, unitFilter]);
 
   const unitOptions = units.map((u) => String(u.Unit_id));
 
@@ -94,7 +104,7 @@ export function Hangars() {
     try {
       await api.deleteHangar(row.Hangar_id);
       setToast({ msg: "Hangar deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -119,7 +129,7 @@ export function Hangars() {
         setToast({ msg: "Hangar created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
@@ -130,8 +140,16 @@ export function Hangars() {
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Hangars</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Hangars ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={unitFilter}
+            onChange={(e) => setUnitFilter(e.target.value)}
+          >
+            <option value="">All Unit</option>
+            {units.map((unit) => (
+              <option key={unit.Unit_id} value={unit.Unit_id}>{unit.Unit_name}</option>
+            ))}
+          </select>
         </div>
       </div>
       <DataTable

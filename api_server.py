@@ -9,13 +9,16 @@ Run with:
     uvicorn api_server:app --reload --port 8000
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+import bcrypt
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 from pydantic import BaseModel
 
+from aircraft_management.db.connection import get_connection
 from aircraft_management.models import (
     aircraft as aircraft_model,
     asset as asset_model,
@@ -26,6 +29,10 @@ from aircraft_management.models import (
 )
 
 app = FastAPI(title="Aircraft Fleet Management API")
+
+SECRET_KEY = "aircraft_fleet_secret_2024"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 8
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,6 +145,18 @@ class InspectionUpdate(BaseModel):
     Valid_till: Optional[date] = None
 
 
+class SignupIn(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    role: str = "viewer"
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
 # ---------------------------------------------------------------------------
 # Helper: serialize rows (convert date objects to ISO strings)
 # ---------------------------------------------------------------------------
@@ -156,13 +175,135 @@ def _serialize_rows(rows: list) -> list:
     return [_serialize_row(r) for r in rows]
 
 
+def _fetch_all(query: str, params: tuple = ()) -> list[dict]:
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(query, params)
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _fetch_one(query: str, params: tuple = ()) -> Optional[dict]:
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(query, params)
+        return cursor.fetchone()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _execute(query: str, params: tuple = ()) -> None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(query, params)
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _create_access_token(user_id: int) -> str:
+    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    payload = {"sub": str(user_id), "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return authorization.split(" ", 1)[1].strip()
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/signup")
+def signup(body: SignupIn):
+    existing = _fetch_one("SELECT id FROM users WHERE email = %s", (body.email,))
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    role = body.role if body.role in {"admin", "engineer", "viewer"} else "viewer"
+
+    _execute(
+        "INSERT INTO users (full_name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+        (body.full_name, body.email, password_hash, role),
+    )
+    return {"message": "User created"}
+
+
+@app.post("/auth/login")
+def login(body: LoginIn):
+    user = _fetch_one(
+        "SELECT id, full_name, email, password_hash, role FROM users WHERE email = %s",
+        (body.email,),
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    valid = bcrypt.checkpw(body.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = _create_access_token(user["id"])
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "full_name": user["full_name"],
+            "email": user["email"],
+            "role": user["role"],
+        },
+    }
+
+
+@app.get("/auth/me")
+def me(authorization: Optional[str] = Header(default=None)):
+    token = _extract_bearer_token(authorization)
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub", "0"))
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid token") from None
+
+    user = _fetch_one(
+        "SELECT id, full_name, email, role FROM users WHERE id = %s",
+        (user_id,),
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user
+
+
 # ---------------------------------------------------------------------------
 # Units
 # ---------------------------------------------------------------------------
 
 @app.get("/units")
-def list_units():
-    return _serialize_rows(unit_model.get_all())
+def list_units(status: Optional[str] = None):
+    query = "SELECT * FROM Unit"
+    params: list[Any] = []
+    if status:
+        query += " WHERE Status = %s"
+        params.append(status)
+    query += " ORDER BY Unit_id"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
+
+
+@app.get("/units/statuses")
+def list_unit_statuses():
+    rows = _fetch_all(
+        "SELECT DISTINCT Status AS status FROM Unit WHERE Status IS NOT NULL ORDER BY Status"
+    )
+    return [row["status"] for row in rows if row.get("status")]
 
 
 @app.get("/units/{unit_id}")
@@ -195,8 +336,18 @@ def delete_unit(unit_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/hangars")
-def list_hangars():
-    return _serialize_rows(hangar_model.get_all())
+def list_hangars(unit_id: Optional[int] = None):
+    query = (
+        "SELECT h.*, u.Unit_name "
+        "FROM Hangar h "
+        "LEFT JOIN Unit u ON h.Unit_id = u.Unit_id"
+    )
+    params: list[Any] = []
+    if unit_id is not None:
+        query += " WHERE h.Unit_id = %s"
+        params.append(unit_id)
+    query += " ORDER BY h.Hangar_id"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
 
 
 @app.get("/hangars/{hangar_id}")
@@ -229,8 +380,33 @@ def delete_hangar(hangar_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/aircraft")
-def list_aircraft():
-    return _serialize_rows(aircraft_model.get_all())
+def list_aircraft(unit_id: Optional[int] = None, status: Optional[str] = None):
+    query = (
+        "SELECT a.*, u.Unit_name, h.Hangar_name "
+        "FROM Aircraft a "
+        "LEFT JOIN Unit u ON a.Unit_id = u.Unit_id "
+        "LEFT JOIN Hangar h ON a.Hangar_id = h.Hangar_id"
+    )
+    where_clauses = []
+    params: list[Any] = []
+    if unit_id is not None:
+        where_clauses.append("a.Unit_id = %s")
+        params.append(unit_id)
+    if status:
+        where_clauses.append("a.Status = %s")
+        params.append(status)
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+    query += " ORDER BY a.Aircraft_id"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
+
+
+@app.get("/aircraft/statuses")
+def list_aircraft_statuses():
+    rows = _fetch_all(
+        "SELECT DISTINCT Status AS status FROM Aircraft WHERE Status IS NOT NULL ORDER BY Status"
+    )
+    return [row["status"] for row in rows if row.get("status")]
 
 
 @app.get("/aircraft/{aircraft_id}")
@@ -263,8 +439,29 @@ def delete_aircraft(aircraft_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/assets")
-def list_assets():
-    return _serialize_rows(asset_model.get_all())
+def list_assets(criticality: Optional[str] = None, aircraft_id: Optional[int] = None):
+    query = "SELECT * FROM Asset"
+    where_clauses = []
+    params: list[Any] = []
+    if criticality:
+        where_clauses.append("Criticality = %s")
+        params.append(criticality)
+    if aircraft_id is not None:
+        where_clauses.append("Aircraft_id = %s")
+        params.append(aircraft_id)
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+    query += " ORDER BY Asset_id"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
+
+
+@app.get("/assets/criticalities")
+def list_asset_criticalities():
+    rows = _fetch_all(
+        "SELECT DISTINCT Criticality AS criticality "
+        "FROM Asset WHERE Criticality IS NOT NULL ORDER BY Criticality"
+    )
+    return [row["criticality"] for row in rows if row.get("criticality")]
 
 
 @app.get("/assets/{asset_id}")
@@ -300,8 +497,26 @@ def delete_asset(asset_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/transactions")
-def list_transactions():
-    return _serialize_rows(transaction_model.get_all())
+def list_transactions(aircraft_id: Optional[int] = None, status: Optional[str] = None):
+    query = (
+        "SELECT t.*, a.Asset_name, u.Unit_name "
+        "FROM Asset_Transaction t "
+        "LEFT JOIN Asset a ON t.Serial_id = a.Asset_id "
+        "LEFT JOIN Unit u ON t.Unit_id = u.Unit_id"
+    )
+    where_clauses = []
+    params: list[Any] = []
+    if aircraft_id is not None:
+        where_clauses.append("t.Aircraft_id = %s")
+        params.append(aircraft_id)
+    if status == "issued":
+        where_clauses.append("t.Return_date IS NULL")
+    elif status == "returned":
+        where_clauses.append("t.Return_date IS NOT NULL")
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+    query += " ORDER BY t.Issue_date DESC"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
 
 
 @app.get("/transactions/{transaction_id}")
@@ -334,8 +549,29 @@ def delete_transaction(transaction_id: int):
 # ---------------------------------------------------------------------------
 
 @app.get("/inspections")
-def list_inspections():
-    return _serialize_rows(inspection_model.get_all())
+def list_inspections(aircraft_id: Optional[int] = None, status: Optional[str] = None):
+    query = (
+        "SELECT ir.*, a.Registration_no "
+        "FROM Inspection_Record ir "
+        "LEFT JOIN Aircraft a ON ir.Aircraft_id = a.Aircraft_id"
+    )
+    where_clauses = []
+    params: list[Any] = []
+    if aircraft_id is not None:
+        where_clauses.append("ir.Aircraft_id = %s")
+        params.append(aircraft_id)
+    if status == "overdue":
+        where_clauses.append("ir.Valid_till < CURDATE()")
+    elif status == "expiring":
+        where_clauses.append(
+            "ir.Valid_till BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+        )
+    elif status == "ok":
+        where_clauses.append("ir.Valid_till > DATE_ADD(CURDATE(), INTERVAL 30 DAY)")
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+    query += " ORDER BY ir.Inspection_date DESC"
+    return _serialize_rows(_fetch_all(query, tuple(params)))
 
 
 @app.get("/inspections/{inspection_id}")

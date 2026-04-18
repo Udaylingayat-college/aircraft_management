@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
+import client, { api } from "../api/client";
 import type { Inspection, Aircraft } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
@@ -42,27 +42,35 @@ export function Inspections() {
   const [editing, setEditing] = useState<Inspection | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [aircraftFilter, setAircraftFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   const today = new Date().toISOString().slice(0, 10);
   const soon = new Date();
   soon.setDate(soon.getDate() + 30);
   const soonStr = soon.toISOString().slice(0, 10);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selectedAircraft: string = aircraftFilter, selectedStatus: string = statusFilter) => {
     setLoading(true);
     try {
-      const [inspList, aircraftList] = await Promise.all([
-        api.getInspections(),
+      const params: Record<string, string | number> = {};
+      if (selectedAircraft) params.aircraft_id = Number(selectedAircraft);
+      if (selectedStatus) params.status = selectedStatus;
+
+      const [inspResp, aircraftList] = await Promise.all([
+        client.get<Inspection[]>("/inspections", { params: Object.keys(params).length ? params : undefined }),
         api.getAircraft(),
       ]);
-      setData(inspList);
+      setData(inspResp.data);
       setAircraft(aircraftList);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [aircraftFilter, statusFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(aircraftFilter, statusFilter);
+  }, [aircraftFilter, load, statusFilter]);
 
   const fields: FieldDef[] = [
     { name: "Inspection_id", label: "Inspection ID", type: "number", required: true },
@@ -105,7 +113,7 @@ export function Inspections() {
     try {
       await api.deleteInspection(row.Inspection_id);
       setToast({ msg: "Inspection deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -130,13 +138,12 @@ export function Inspections() {
         setToast({ msg: "Inspection created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
   };
 
-  // Overdue = Valid_till < today → red; expiring soon (within 30 days) → amber
   const rowClassName = (r: Record<string, unknown>) => {
     const insp = r as unknown as Inspection;
     if (!insp.Valid_till) return "";
@@ -150,8 +157,26 @@ export function Inspections() {
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Inspections</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Aircraft ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={aircraftFilter}
+            onChange={(e) => setAircraftFilter(e.target.value)}
+          >
+            <option value="">All Aircraft</option>
+            {aircraft.map((aircraftItem) => (
+              <option key={aircraftItem.Aircraft_id} value={aircraftItem.Aircraft_id}>{aircraftItem.Registration_no}</option>
+            ))}
+          </select>
+          <select
+            className={layoutStyles.headerSelect}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            <option value="overdue">Overdue</option>
+            <option value="expiring">Expiring Soon</option>
+            <option value="ok">OK</option>
+          </select>
         </div>
       </div>
       <DataTable
