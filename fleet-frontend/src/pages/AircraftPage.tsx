@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
+import client, { api } from "../api/client";
 import type { Aircraft, Unit, Hangar } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
@@ -43,24 +43,37 @@ export function AircraftPage() {
   const [editing, setEditing] = useState<Aircraft | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [unitFilter, setUnitFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selectedUnitId: string = unitFilter, selectedStatus: string = statusFilter) => {
     setLoading(true);
     try {
-      const [aircraft, unitList, hangarList] = await Promise.all([
-        api.getAircraft(),
+      const params: Record<string, string | number> = {};
+      if (selectedUnitId) params.unit_id = Number(selectedUnitId);
+      if (selectedStatus) params.status = selectedStatus;
+
+      const [aircraftResp, unitList, hangarList] = await Promise.all([
+        client.get<Aircraft[]>("/aircraft", { params: Object.keys(params).length ? params : undefined }),
         api.getUnits(),
         api.getHangars(),
       ]);
-      setData(aircraft);
+      setData(aircraftResp.data);
       setUnits(unitList);
       setHangars(hangarList);
     } finally {
       setLoading(false);
     }
+  }, [statusFilter, unitFilter]);
+
+  useEffect(() => {
+    client.get<string[]>("/aircraft/statuses").then((response) => setStatusOptions(response.data));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(unitFilter, statusFilter);
+  }, [load, statusFilter, unitFilter]);
 
   const fields: FieldDef[] = [
     { name: "Aircraft_id", label: "Aircraft ID", type: "number", required: true },
@@ -110,7 +123,7 @@ export function AircraftPage() {
     try {
       await api.deleteAircraft(row.Aircraft_id);
       setToast({ msg: "Aircraft deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -139,32 +152,43 @@ export function AircraftPage() {
         setToast({ msg: "Aircraft created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
   };
-
-  const unitNames = units.map((u) => u.Unit_name);
-  const statusOptions = STATUS_OPTIONS;
 
   return (
     <div>
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Aircraft</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Hangars ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={unitFilter}
+            onChange={(e) => setUnitFilter(e.target.value)}
+          >
+            <option value="">All Unit</option>
+            {units.map((unit) => (
+              <option key={unit.Unit_id} value={unit.Unit_id}>{unit.Unit_name}</option>
+            ))}
+          </select>
+          <select
+            className={layoutStyles.headerSelect}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
         </div>
       </div>
       <DataTable
         columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
         data={data as unknown as Record<string, unknown>[]}
         rowKey={(r) => (r as unknown as Aircraft).Aircraft_id}
-        filters={[
-          { key: "Unit_name", label: "All Units", options: unitNames },
-          { key: "Status", label: "All Statuses", options: statusOptions },
-        ]}
         onAdd={openAdd}
         onEdit={(r) => openEdit(r as unknown as Aircraft)}
         onDelete={(r) => handleDelete(r as unknown as Aircraft)}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
-import type { Asset } from "../api/client";
+import client, { api } from "../api/client";
+import type { Asset, Aircraft } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import { FormDialog } from "../components/FormDialog";
@@ -70,13 +70,34 @@ export function Assets() {
   const [editing, setEditing] = useState<Asset | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [criticalityFilter, setCriticalityFilter] = useState("");
+  const [aircraftFilter, setAircraftFilter] = useState("");
+  const [criticalityOptions, setCriticalityOptions] = useState<string[]>([]);
+  const [aircraftOptions, setAircraftOptions] = useState<Aircraft[]>([]);
 
-  const load = useCallback(() => {
+  const load = useCallback(async (selectedCriticality: string = criticalityFilter, selectedAircraft: string = aircraftFilter) => {
     setLoading(true);
-    api.getAssets().then(setData).finally(() => setLoading(false));
+    try {
+      const params: Record<string, string | number> = {};
+      if (selectedCriticality) params.criticality = selectedCriticality;
+      if (selectedAircraft) params.aircraft_id = Number(selectedAircraft);
+      const { data: assets } = await client.get<Asset[]>("/assets", {
+        params: Object.keys(params).length ? params : undefined,
+      });
+      setData(assets);
+    } finally {
+      setLoading(false);
+    }
+  }, [aircraftFilter, criticalityFilter]);
+
+  useEffect(() => {
+    client.get<string[]>("/assets/criticalities").then((response) => setCriticalityOptions(response.data));
+    api.getAircraft().then(setAircraftOptions);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(criticalityFilter, aircraftFilter);
+  }, [aircraftFilter, criticalityFilter, load]);
 
   const openAdd = () => {
     setEditing(null);
@@ -103,7 +124,7 @@ export function Assets() {
     try {
       await api.deleteAsset(row.Asset_id);
       setToast({ msg: "Asset deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -134,7 +155,7 @@ export function Assets() {
         setToast({ msg: "Asset created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
@@ -145,26 +166,32 @@ export function Assets() {
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Assets</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Categories ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={criticalityFilter}
+            onChange={(e) => setCriticalityFilter(e.target.value)}
+          >
+            <option value="">All Criticality</option>
+            {criticalityOptions.map((criticality) => (
+              <option key={criticality} value={criticality}>{criticality}</option>
+            ))}
+          </select>
+          <select
+            className={layoutStyles.headerSelect}
+            value={aircraftFilter}
+            onChange={(e) => setAircraftFilter(e.target.value)}
+          >
+            <option value="">All Aircraft</option>
+            {aircraftOptions.map((aircraft) => (
+              <option key={aircraft.Aircraft_id} value={aircraft.Aircraft_id}>{aircraft.Registration_no}</option>
+            ))}
+          </select>
         </div>
       </div>
       <DataTable
         columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
         data={data as unknown as Record<string, unknown>[]}
         rowKey={(r) => (r as unknown as Asset).Asset_id}
-        filters={[
-          {
-            key: "Status",
-            label: "All Statuses",
-            options: ["Available", "Issued", "Under Repair", "Decommissioned"],
-          },
-          {
-            key: "Criticality",
-            label: "All Criticality",
-            options: ["Critical", "High", "Medium", "Low"],
-          },
-        ]}
         rowClassName={(r) => {
           const asset = r as unknown as Asset;
           if (asset.Criticality === "Critical") return "red";

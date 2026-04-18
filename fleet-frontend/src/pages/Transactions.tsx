@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../api/client";
-import type { Transaction, Asset, Unit } from "../api/client";
+import client, { api } from "../api/client";
+import type { Transaction, Asset, Unit, Aircraft } from "../api/client";
 import { DataTable } from "../components/DataTable";
 import type { Column } from "../components/DataTable";
 import { FormDialog } from "../components/FormDialog";
@@ -33,29 +33,42 @@ export function Transactions() {
   const [data, setData] = useState<Transaction[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [aircraft, setAircraft] = useState<Aircraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [values, setValues] = useState<Record<string, string>>(EMPTY);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+  const [aircraftFilter, setAircraftFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selectedAircraft: string = aircraftFilter, selectedStatus: string = statusFilter) => {
     setLoading(true);
     try {
-      const [txns, assetList, unitList] = await Promise.all([
-        api.getTransactions(),
+      const params: Record<string, string | number> = {};
+      if (selectedAircraft) params.aircraft_id = Number(selectedAircraft);
+      if (selectedStatus) params.status = selectedStatus;
+
+      const [txnsResp, assetList, unitList] = await Promise.all([
+        client.get<Transaction[]>("/transactions", { params: Object.keys(params).length ? params : undefined }),
         api.getAssets(),
         api.getUnits(),
       ]);
-      setData(txns);
+      setData(txnsResp.data);
       setAssets(assetList);
       setUnits(unitList);
     } finally {
       setLoading(false);
     }
+  }, [aircraftFilter, statusFilter]);
+
+  useEffect(() => {
+    api.getAircraft().then(setAircraft);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load(aircraftFilter, statusFilter);
+  }, [aircraftFilter, load, statusFilter]);
 
   const fields: FieldDef[] = [
     { name: "Transaction_id", label: "Transaction ID", type: "number", required: true },
@@ -102,7 +115,7 @@ export function Transactions() {
     try {
       await api.deleteTransaction(row.Transaction_id);
       setToast({ msg: "Transaction deleted", type: "success" });
-      load();
+      await load();
     } catch {
       setToast({ msg: "Delete failed", type: "error" });
     }
@@ -129,13 +142,12 @@ export function Transactions() {
         setToast({ msg: "Transaction created", type: "success" });
       }
       setDialogOpen(false);
-      load();
+      await load();
     } catch {
       setToast({ msg: "Save failed", type: "error" });
     }
   };
 
-  // Rows with no Return_date are still-issued → highlight amber
   const rowClassName = (r: Record<string, unknown>) => {
     const txn = r as unknown as Transaction;
     return !txn.Return_date ? "amber" : "";
@@ -146,8 +158,25 @@ export function Transactions() {
       <div className={layoutStyles.pageHeader}>
         <h1 className={layoutStyles.pageTitle}>Transactions</h1>
         <div className={layoutStyles.pageHeaderFilters}>
-          <span className={layoutStyles.headerFilter}>All Units ▾</span>
-          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+          <select
+            className={layoutStyles.headerSelect}
+            value={aircraftFilter}
+            onChange={(e) => setAircraftFilter(e.target.value)}
+          >
+            <option value="">All Aircraft</option>
+            {aircraft.map((aircraftItem) => (
+              <option key={aircraftItem.Aircraft_id} value={aircraftItem.Aircraft_id}>{aircraftItem.Registration_no}</option>
+            ))}
+          </select>
+          <select
+            className={layoutStyles.headerSelect}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="">All Status</option>
+            <option value="issued">issued</option>
+            <option value="returned">returned</option>
+          </select>
         </div>
       </div>
       <DataTable

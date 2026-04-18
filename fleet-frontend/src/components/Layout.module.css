@@ -129,6 +129,22 @@
   white-space: nowrap;
 }
 
+.headerSelect {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #374151;
+  background: white;
+  cursor: pointer;
+}
+
+.headerSelect:focus {
+  outline: none;
+  border-color: #7c3aed;
+}
+
 .card {
   background: var(--color-surface);
   border-radius: var(--radius-card);
