@@ -16,7 +16,5 @@ export function Toast({ message, type = "info", onClose, duration = 3000 }: Prop
     return () => clearTimeout(timer);
   }, [onClose, duration]);
 
-  const style = type === "info" ? styles.warning : styles[type];
-
-  return <div className={`${styles.toast} ${style}`}>{message}</div>;
+  return <div className={`${styles.toast} ${styles[type]}`}>{message}</div>;
 }
