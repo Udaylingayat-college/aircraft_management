@@ -127,18 +127,22 @@ export function Hangars() {
 
   return (
     <div>
-      <h1 className={layoutStyles.pageTitle}>Hangars</h1>
-      <div className={layoutStyles.card}>
-        <DataTable
-          columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
-          data={data as unknown as Record<string, unknown>[]}
-          rowKey={(r) => (r as unknown as Hangar).Hangar_id}
-          onAdd={openAdd}
-          onEdit={(r) => openEdit(r as unknown as Hangar)}
-          onDelete={(r) => handleDelete(r as unknown as Hangar)}
-          loading={loading}
-        />
+      <div className={layoutStyles.pageHeader}>
+        <h1 className={layoutStyles.pageTitle}>Hangars</h1>
+        <div className={layoutStyles.pageHeaderFilters}>
+          <span className={layoutStyles.headerFilter}>All Hangars ▾</span>
+          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+        </div>
       </div>
+      <DataTable
+        columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
+        data={data as unknown as Record<string, unknown>[]}
+        rowKey={(r) => (r as unknown as Hangar).Hangar_id}
+        onAdd={openAdd}
+        onEdit={(r) => openEdit(r as unknown as Hangar)}
+        onDelete={(r) => handleDelete(r as unknown as Hangar)}
+        loading={loading}
+      />
 
       {dialogOpen && (
         <FormDialog

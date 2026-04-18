@@ -150,22 +150,26 @@ export function AircraftPage() {
 
   return (
     <div>
-      <h1 className={layoutStyles.pageTitle}>Aircraft</h1>
-      <div className={layoutStyles.card}>
-        <DataTable
-          columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
-          data={data as unknown as Record<string, unknown>[]}
-          rowKey={(r) => (r as unknown as Aircraft).Aircraft_id}
-          filters={[
-            { key: "Unit_name", label: "All Units", options: unitNames },
-            { key: "Status", label: "All Statuses", options: statusOptions },
-          ]}
-          onAdd={openAdd}
-          onEdit={(r) => openEdit(r as unknown as Aircraft)}
-          onDelete={(r) => handleDelete(r as unknown as Aircraft)}
-          loading={loading}
-        />
+      <div className={layoutStyles.pageHeader}>
+        <h1 className={layoutStyles.pageTitle}>Aircraft</h1>
+        <div className={layoutStyles.pageHeaderFilters}>
+          <span className={layoutStyles.headerFilter}>All Hangars ▾</span>
+          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+        </div>
       </div>
+      <DataTable
+        columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
+        data={data as unknown as Record<string, unknown>[]}
+        rowKey={(r) => (r as unknown as Aircraft).Aircraft_id}
+        filters={[
+          { key: "Unit_name", label: "All Units", options: unitNames },
+          { key: "Status", label: "All Statuses", options: statusOptions },
+        ]}
+        onAdd={openAdd}
+        onEdit={(r) => openEdit(r as unknown as Aircraft)}
+        onDelete={(r) => handleDelete(r as unknown as Aircraft)}
+        loading={loading}
+      />
 
       {dialogOpen && (
         <FormDialog

@@ -1,72 +1,48 @@
 .badge {
   display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: 999px;
+  padding: 3px 10px;
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .active,
+.ok,
 .operational,
 .available,
-.functional {
-  background: rgba(56, 161, 105, 0.15);
-  color: #68d391;
+.functional,
+.excellent,
+.good,
+.low {
+  background: #d1fae5;
+  color: #065f46;
 }
 
-.inactive,
-.grounded {
-  background: rgba(229, 62, 62, 0.15);
-  color: #fc8181;
-}
-
+.warning,
+.pending,
 .maintenance,
 .under_maintenance,
-.fair {
-  background: rgba(214, 158, 46, 0.15);
-  color: #f6e05e;
+.high,
+.fair,
+.in_transit {
+  background: #fef3c7;
+  color: #92400e;
 }
 
+.critical,
+.inactive,
+.grounded,
 .issued,
-.critical {
-  background: rgba(229, 62, 62, 0.15);
-  color: #fc8181;
-}
-
-.high {
-  background: rgba(214, 158, 46, 0.15);
-  color: #f6e05e;
-}
-
-.medium {
-  background: rgba(79, 110, 247, 0.15);
-  color: #90cdf4;
-}
-
-.low {
-  background: rgba(56, 161, 105, 0.15);
-  color: #68d391;
-}
-
-.excellent {
-  background: rgba(56, 161, 105, 0.15);
-  color: #68d391;
-}
-
-.good {
-  background: rgba(79, 110, 247, 0.15);
-  color: #90cdf4;
-}
-
 .poor,
-.damaged {
-  background: rgba(229, 62, 62, 0.15);
-  color: #fc8181;
+.damaged,
+.decommissioned {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
-.default {
-  background: var(--color-surface-2);
-  color: var(--color-text-muted);
+.medium,
+.default,
+.under_repair {
+  background: #f3f4f6;
+  color: #374151;
 }

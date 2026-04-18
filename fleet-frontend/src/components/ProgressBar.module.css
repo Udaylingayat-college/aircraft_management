@@ -1,24 +1,35 @@
 .wrapper {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-surface-2);
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-border);
   overflow: hidden;
 }
 
 .fill {
   height: 100%;
-  border-radius: 3px;
-  background: var(--color-primary);
+  border-radius: 999px;
   transition: width 0.3s ease;
 }
 
+.normal {
+  background: linear-gradient(90deg, var(--color-accent), #a78bfa);
+}
+
+.warning {
+  background: var(--color-warning);
+}
+
+.danger {
+  background: var(--color-danger);
+}
+
 .label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }

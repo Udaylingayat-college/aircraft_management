@@ -8,10 +8,12 @@ interface Props {
 
 export function ProgressBar({ value, max, showLabel = true }: Props) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  const toneClass = pct > 90 ? styles.danger : pct > 75 ? styles.warning : styles.normal;
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.bar}>
-        <div className={styles.fill} style={{ width: `${pct}%` }} />
+        <div className={`${styles.fill} ${toneClass}`} style={{ width: `${pct}%` }} />
       </div>
       {showLabel && (
         <span className={styles.label}>
