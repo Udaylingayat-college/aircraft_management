@@ -147,19 +147,23 @@ export function Inspections() {
 
   return (
     <div>
-      <h1 className={layoutStyles.pageTitle}>Inspections</h1>
-      <div className={layoutStyles.card}>
-        <DataTable
-          columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
-          data={data as unknown as Record<string, unknown>[]}
-          rowKey={(r) => (r as unknown as Inspection).Inspection_id}
-          rowClassName={rowClassName}
-          onAdd={openAdd}
-          onEdit={(r) => openEdit(r as unknown as Inspection)}
-          onDelete={(r) => handleDelete(r as unknown as Inspection)}
-          loading={loading}
-        />
+      <div className={layoutStyles.pageHeader}>
+        <h1 className={layoutStyles.pageTitle}>Inspections</h1>
+        <div className={layoutStyles.pageHeaderFilters}>
+          <span className={layoutStyles.headerFilter}>All Aircraft ▾</span>
+          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+        </div>
       </div>
+      <DataTable
+        columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
+        data={data as unknown as Record<string, unknown>[]}
+        rowKey={(r) => (r as unknown as Inspection).Inspection_id}
+        rowClassName={rowClassName}
+        onAdd={openAdd}
+        onEdit={(r) => openEdit(r as unknown as Inspection)}
+        onDelete={(r) => handleDelete(r as unknown as Inspection)}
+        loading={loading}
+      />
 
       {dialogOpen && (
         <FormDialog

@@ -1,40 +1,25 @@
 .toast {
   position: fixed;
-  bottom: 24px;
   right: 24px;
-  padding: 12px 20px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: var(--shadow);
+  bottom: 24px;
   z-index: 200;
-  animation: slideIn 0.2s ease;
-  max-width: 320px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 14px 18px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  border-left: 4px solid transparent;
 }
 
 .success {
-  background: #276749;
-  color: #c6f6d5;
+  border-left-color: var(--color-positive);
 }
 
 .error {
-  background: #822727;
-  color: #fed7d7;
+  border-left-color: var(--color-danger);
 }
 
-.info {
-  background: var(--color-surface-2);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.warning {
+  border-left-color: var(--color-warning);
 }

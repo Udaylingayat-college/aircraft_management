@@ -142,36 +142,40 @@ export function Assets() {
 
   return (
     <div>
-      <h1 className={layoutStyles.pageTitle}>Assets</h1>
-      <div className={layoutStyles.card}>
-        <DataTable
-          columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
-          data={data as unknown as Record<string, unknown>[]}
-          rowKey={(r) => (r as unknown as Asset).Asset_id}
-          filters={[
-            {
-              key: "Status",
-              label: "All Statuses",
-              options: ["Available", "Issued", "Under Repair", "Decommissioned"],
-            },
-            {
-              key: "Criticality",
-              label: "All Criticality",
-              options: ["Critical", "High", "Medium", "Low"],
-            },
-          ]}
-          rowClassName={(r) => {
-            const asset = r as unknown as Asset;
-            if (asset.Criticality === "Critical") return "red";
-            if (asset.Criticality === "High") return "amber";
-            return "";
-          }}
-          onAdd={openAdd}
-          onEdit={(r) => openEdit(r as unknown as Asset)}
-          onDelete={(r) => handleDelete(r as unknown as Asset)}
-          loading={loading}
-        />
+      <div className={layoutStyles.pageHeader}>
+        <h1 className={layoutStyles.pageTitle}>Assets</h1>
+        <div className={layoutStyles.pageHeaderFilters}>
+          <span className={layoutStyles.headerFilter}>All Categories ▾</span>
+          <span className={layoutStyles.headerFilter}>Last 90 days</span>
+        </div>
       </div>
+      <DataTable
+        columns={COLUMNS as unknown as Column<Record<string, unknown>>[]}
+        data={data as unknown as Record<string, unknown>[]}
+        rowKey={(r) => (r as unknown as Asset).Asset_id}
+        filters={[
+          {
+            key: "Status",
+            label: "All Statuses",
+            options: ["Available", "Issued", "Under Repair", "Decommissioned"],
+          },
+          {
+            key: "Criticality",
+            label: "All Criticality",
+            options: ["Critical", "High", "Medium", "Low"],
+          },
+        ]}
+        rowClassName={(r) => {
+          const asset = r as unknown as Asset;
+          if (asset.Criticality === "Critical") return "red";
+          if (asset.Criticality === "High") return "amber";
+          return "";
+        }}
+        onAdd={openAdd}
+        onEdit={(r) => openEdit(r as unknown as Asset)}
+        onDelete={(r) => handleDelete(r as unknown as Asset)}
+        loading={loading}
+      />
 
       {dialogOpen && (
         <FormDialog

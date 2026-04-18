@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import styles from "./Toast.module.css";
 
-export type ToastType = "success" | "error" | "info";
+export type ToastType = "success" | "error" | "warning" | "info";
 
 interface Props {
   message: string;
@@ -16,9 +16,7 @@ export function Toast({ message, type = "info", onClose, duration = 3000 }: Prop
     return () => clearTimeout(timer);
   }, [onClose, duration]);
 
-  return (
-    <div className={`${styles.toast} ${styles[type]}`}>
-      {message}
-    </div>
-  );
+  const style = type === "info" ? styles.warning : styles[type];
+
+  return <div className={`${styles.toast} ${style}`}>{message}</div>;
 }
