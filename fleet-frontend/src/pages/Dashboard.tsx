@@ -63,29 +63,7 @@ export function Dashboard() {
     }));
   }, [summary]);
 
-  const mapChips = useMemo<MapChip[]>(() => {
-    if (!summary) return [];
-    const base = channelRows.map((row, index) => ({
-      label: row.name,
-      flag: ["🇺🇸", "🇬🇧", "🇮🇳", "🇯🇵", "🇦🇺"][index] ?? "🌍",
-      count: row.orders,
-      x: [22, 45, 67, 80, 74][index] ?? 50,
-      y: [43, 34, 48, 36, 72][index] ?? 50,
-    }));
 
-    while (base.length < 5) {
-      const index = base.length;
-      base.push({
-        label: `Unit ${index + 1}`,
-        flag: ["🇧🇷", "🇨🇦", "🇩🇪", "🇸🇬", "🇿🇦"][index] ?? "🌍",
-        count: Math.max(1, summary.active_units - index),
-        x: [30, 26, 52, 74, 58][index] ?? 50,
-        y: [68, 28, 31, 62, 76][index] ?? 50,
-      });
-    }
-
-    return base.slice(0, 5);
-  }, [channelRows, summary]);
 
   if (loading) {
     return (
@@ -226,36 +204,7 @@ export function Dashboard() {
           </div>
         </section>
 
-        <section className={`${styles.card} ${styles.wide}`}>
-          <h2 className={styles.sectionTitle}>Global Asset Footprint</h2>
-          <div className={styles.mapWrap}>
-            <svg viewBox="0 0 100 50" className={styles.worldMap}>
-              {[...Array(22)].map((_, row) => (
-                [...Array(44)].map((__, col) => {
-                  const x = 2 + col * 2.2;
-                  const y = 2 + row * 2.1;
-                  const shape =
-                    (x > 6 && x < 30 && y > 12 && y < 35) ||
-                    (x > 34 && x < 56 && y > 8 && y < 28) ||
-                    (x > 52 && x < 74 && y > 12 && y < 36) ||
-                    (x > 74 && x < 95 && y > 18 && y < 38);
-                  if (!shape || (row + col) % 3 !== 0) return null;
-                  return <circle key={`${row}-${col}`} cx={x} cy={y} r="0.26" className={styles.mapDot} />;
-                })
-              ))}
-            </svg>
 
-            {mapChips.map((chip) => (
-              <div
-                key={chip.label}
-                className={styles.mapChip}
-                style={{ left: `${chip.x}%`, top: `${chip.y}%` }}
-              >
-                {chip.flag} {chip.count}
-              </div>
-            ))}
-          </div>
-        </section>
 
         <section className={styles.card}>
           <h2 className={styles.sectionTitle}>Recent Transactions</h2>

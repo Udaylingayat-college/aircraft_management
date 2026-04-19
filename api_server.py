@@ -9,16 +9,17 @@ Run with:
     uvicorn api_server:app --reload --port 8000
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date
+import datetime
 from typing import Any, Optional
 
-import bcrypt
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from jose import JWTError, jwt
 from pydantic import BaseModel
-
+import bcrypt
+from jose import jwt, JWTError
 from aircraft_management.db.connection import get_connection
+
 from aircraft_management.models import (
     aircraft as aircraft_model,
     asset as asset_model,
@@ -29,10 +30,6 @@ from aircraft_management.models import (
 )
 
 app = FastAPI(title="Aircraft Fleet Management API")
-
-SECRET_KEY = "aircraft_fleet_secret_2024"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 8
 
 app.add_middleware(
     CORSMiddleware,
@@ -145,17 +142,89 @@ class InspectionUpdate(BaseModel):
     Valid_till: Optional[date] = None
 
 
-class SignupIn(BaseModel):
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+SECRET_KEY = "aircraft_fleet_secret_2024"
+ALGORITHM = "HS256"
+
+class SignupReq(BaseModel):
     full_name: str
     email: str
     password: str
-    role: str = "viewer"
+    role: str
 
-
-class LoginIn(BaseModel):
+class LoginReq(BaseModel):
     email: str
     password: str
 
+@app.post("/auth/signup")
+def auth_signup(body: SignupReq):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM users WHERE email = %s", (body.email,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Email already exists")
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(body.password.encode('utf-8'), salt).decode('utf-8')
+        cursor.execute(
+            "INSERT INTO users (full_name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+            (body.full_name, body.email, hashed, body.role)
+        )
+        conn.commit()
+        return {"message": "User created"}
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/auth/login")
+def auth_login(body: LoginReq):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (body.email,))
+        user = cursor.fetchone()
+        if not user or not bcrypt.checkpw(body.password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        expire = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        to_encode = {"sub": str(user['id']), "exp": expire}
+        token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        return {
+            "token": token,
+            "user": {
+                "id": user["id"],
+                "full_name": user["full_name"],
+                "email": user["email"],
+                "role": user["role"]
+            }
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.get("/auth/me")
+def auth_me(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id, full_name, email, role FROM users WHERE id = %s", (int(user_id),))
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    finally:
+        cursor.close()
+        conn.close()
 
 # ---------------------------------------------------------------------------
 # Helper: serialize rows (convert date objects to ISO strings)
@@ -175,135 +244,35 @@ def _serialize_rows(rows: list) -> list:
     return [_serialize_row(r) for r in rows]
 
 
-def _fetch_all(query: str, params: tuple = ()) -> list[dict]:
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(query, params)
-        return cursor.fetchall()
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def _fetch_one(query: str, params: tuple = ()) -> Optional[dict]:
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(query, params)
-        return cursor.fetchone()
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def _execute(query: str, params: tuple = ()) -> None:
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(query, params)
-        conn.commit()
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def _create_access_token(user_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    payload = {"sub": str(user_id), "exp": expire}
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-
-def _extract_bearer_token(authorization: Optional[str]) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return authorization.split(" ", 1)[1].strip()
-
-
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
-
-@app.post("/auth/signup")
-def signup(body: SignupIn):
-    existing = _fetch_one("SELECT id FROM users WHERE email = %s", (body.email,))
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    role = body.role if body.role in {"admin", "engineer", "viewer"} else "viewer"
-
-    _execute(
-        "INSERT INTO users (full_name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
-        (body.full_name, body.email, password_hash, role),
-    )
-    return {"message": "User created"}
-
-
-@app.post("/auth/login")
-def login(body: LoginIn):
-    user = _fetch_one(
-        "SELECT id, full_name, email, password_hash, role FROM users WHERE email = %s",
-        (body.email,),
-    )
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    valid = bcrypt.checkpw(body.password.encode("utf-8"), user["password_hash"].encode("utf-8"))
-    if not valid:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = _create_access_token(user["id"])
-    return {
-        "token": token,
-        "user": {
-            "id": user["id"],
-            "full_name": user["full_name"],
-            "email": user["email"],
-            "role": user["role"],
-        },
-    }
-
-
-@app.get("/auth/me")
-def me(authorization: Optional[str] = Header(default=None)):
-    token = _extract_bearer_token(authorization)
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub", "0"))
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid token") from None
-
-    user = _fetch_one(
-        "SELECT id, full_name, email, role FROM users WHERE id = %s",
-        (user_id,),
-    )
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return user
-
-
 # ---------------------------------------------------------------------------
 # Units
 # ---------------------------------------------------------------------------
 
+@app.get("/units/statuses")
+def get_units_statuses():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT DISTINCT Status as status FROM Unit WHERE Status IS NOT NULL")
+        return [row["status"] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/units")
 def list_units(status: Optional[str] = None):
-    query = "SELECT * FROM Unit"
-    params: list[Any] = []
-    if status:
-        query += " WHERE Status = %s"
-        params.append(status)
-    query += " ORDER BY Unit_id"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
-
-
-@app.get("/units/statuses")
-def list_unit_statuses():
-    rows = _fetch_all(
-        "SELECT DISTINCT Status AS status FROM Unit WHERE Status IS NOT NULL ORDER BY Status"
-    )
-    return [row["status"] for row in rows if row.get("status")]
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if status:
+            cursor.execute("SELECT * FROM Unit WHERE Status = %s ORDER BY Unit_id", (status,))
+        else:
+            cursor.execute("SELECT * FROM Unit ORDER BY Unit_id")
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/units/{unit_id}")
@@ -337,17 +306,17 @@ def delete_unit(unit_id: int):
 
 @app.get("/hangars")
 def list_hangars(unit_id: Optional[int] = None):
-    query = (
-        "SELECT h.*, u.Unit_name "
-        "FROM Hangar h "
-        "LEFT JOIN Unit u ON h.Unit_id = u.Unit_id"
-    )
-    params: list[Any] = []
-    if unit_id is not None:
-        query += " WHERE h.Unit_id = %s"
-        params.append(unit_id)
-    query += " ORDER BY h.Hangar_id"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if unit_id is not None:
+            cursor.execute("SELECT * FROM Hangar WHERE Unit_id = %s ORDER BY Hangar_id", (unit_id,))
+        else:
+            cursor.execute("SELECT * FROM Hangar ORDER BY Hangar_id")
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/hangars/{hangar_id}")
@@ -379,34 +348,37 @@ def delete_hangar(hangar_id: int):
 # Aircraft
 # ---------------------------------------------------------------------------
 
+@app.get("/aircraft/statuses")
+def get_aircraft_statuses():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT DISTINCT Status as status FROM Aircraft WHERE Status IS NOT NULL")
+        return [row["status"] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/aircraft")
 def list_aircraft(unit_id: Optional[int] = None, status: Optional[str] = None):
-    query = (
-        "SELECT a.*, u.Unit_name, h.Hangar_name "
-        "FROM Aircraft a "
-        "LEFT JOIN Unit u ON a.Unit_id = u.Unit_id "
-        "LEFT JOIN Hangar h ON a.Hangar_id = h.Hangar_id"
-    )
-    where_clauses = []
-    params: list[Any] = []
-    if unit_id is not None:
-        where_clauses.append("a.Unit_id = %s")
-        params.append(unit_id)
-    if status:
-        where_clauses.append("a.Status = %s")
-        params.append(status)
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += " ORDER BY a.Aircraft_id"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
-
-
-@app.get("/aircraft/statuses")
-def list_aircraft_statuses():
-    rows = _fetch_all(
-        "SELECT DISTINCT Status AS status FROM Aircraft WHERE Status IS NOT NULL ORDER BY Status"
-    )
-    return [row["status"] for row in rows if row.get("status")]
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = "SELECT * FROM Aircraft WHERE 1=1"
+        params: list = []
+        if unit_id is not None:
+            query += " AND Unit_id = %s"
+            params.append(unit_id)
+        if status:
+            query += " AND Status = %s"
+            params.append(status)
+        query += " ORDER BY Aircraft_id"
+        cursor.execute(query, tuple(params))
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/aircraft/{aircraft_id}")
@@ -438,30 +410,37 @@ def delete_aircraft(aircraft_id: int):
 # Assets
 # ---------------------------------------------------------------------------
 
+@app.get("/assets/criticalities")
+def get_assets_criticalities():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT DISTINCT Criticality as criticality FROM Asset WHERE Criticality IS NOT NULL")
+        return [row["criticality"] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/assets")
 def list_assets(criticality: Optional[str] = None, aircraft_id: Optional[int] = None):
-    query = "SELECT * FROM Asset"
-    where_clauses = []
-    params: list[Any] = []
-    if criticality:
-        where_clauses.append("Criticality = %s")
-        params.append(criticality)
-    if aircraft_id is not None:
-        where_clauses.append("Aircraft_id = %s")
-        params.append(aircraft_id)
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += " ORDER BY Asset_id"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
-
-
-@app.get("/assets/criticalities")
-def list_asset_criticalities():
-    rows = _fetch_all(
-        "SELECT DISTINCT Criticality AS criticality "
-        "FROM Asset WHERE Criticality IS NOT NULL ORDER BY Criticality"
-    )
-    return [row["criticality"] for row in rows if row.get("criticality")]
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = "SELECT * FROM Asset WHERE 1=1"
+        params: list = []
+        if criticality:
+            query += " AND Criticality = %s"
+            params.append(criticality)
+        if aircraft_id is not None:
+            query += " AND Aircraft_id = %s"
+            params.append(aircraft_id)
+        query += " ORDER BY Asset_id"
+        cursor.execute(query, tuple(params))
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/assets/{asset_id}")
@@ -498,25 +477,24 @@ def delete_asset(asset_id: int):
 
 @app.get("/transactions")
 def list_transactions(aircraft_id: Optional[int] = None, status: Optional[str] = None):
-    query = (
-        "SELECT t.*, a.Asset_name, u.Unit_name "
-        "FROM Asset_Transaction t "
-        "LEFT JOIN Asset a ON t.Serial_id = a.Asset_id "
-        "LEFT JOIN Unit u ON t.Unit_id = u.Unit_id"
-    )
-    where_clauses = []
-    params: list[Any] = []
-    if aircraft_id is not None:
-        where_clauses.append("t.Aircraft_id = %s")
-        params.append(aircraft_id)
-    if status == "issued":
-        where_clauses.append("t.Return_date IS NULL")
-    elif status == "returned":
-        where_clauses.append("t.Return_date IS NOT NULL")
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += " ORDER BY t.Issue_date DESC"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = "SELECT * FROM Asset_Transaction WHERE 1=1"
+        params: list = []
+        if aircraft_id is not None:
+            query += " AND Serial_id = %s"
+            params.append(aircraft_id)
+        if status == 'issued':
+            query += " AND Return_date IS NULL"
+        elif status == 'returned':
+            query += " AND Return_date IS NOT NULL"
+        query += " ORDER BY Transaction_id"
+        cursor.execute(query, tuple(params))
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/transactions/{transaction_id}")
@@ -550,28 +528,26 @@ def delete_transaction(transaction_id: int):
 
 @app.get("/inspections")
 def list_inspections(aircraft_id: Optional[int] = None, status: Optional[str] = None):
-    query = (
-        "SELECT ir.*, a.Registration_no "
-        "FROM Inspection_Record ir "
-        "LEFT JOIN Aircraft a ON ir.Aircraft_id = a.Aircraft_id"
-    )
-    where_clauses = []
-    params: list[Any] = []
-    if aircraft_id is not None:
-        where_clauses.append("ir.Aircraft_id = %s")
-        params.append(aircraft_id)
-    if status == "overdue":
-        where_clauses.append("ir.Valid_till < CURDATE()")
-    elif status == "expiring":
-        where_clauses.append(
-            "ir.Valid_till BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
-        )
-    elif status == "ok":
-        where_clauses.append("ir.Valid_till > DATE_ADD(CURDATE(), INTERVAL 30 DAY)")
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += " ORDER BY ir.Inspection_date DESC"
-    return _serialize_rows(_fetch_all(query, tuple(params)))
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        query = "SELECT * FROM Inspection_Record WHERE 1=1"
+        params: list = []
+        if aircraft_id is not None:
+            query += " AND Aircraft_id = %s"
+            params.append(aircraft_id)
+        if status == 'overdue':
+            query += " AND Valid_till < CURDATE()"
+        elif status == 'expiring':
+            query += " AND Valid_till BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+        elif status == 'ok':
+            query += " AND Valid_till > DATE_ADD(CURDATE(), INTERVAL 30 DAY)"
+        query += " ORDER BY Inspection_id"
+        cursor.execute(query, tuple(params))
+        return _serialize_rows(cursor.fetchall())
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/inspections/{inspection_id}")
@@ -610,7 +586,22 @@ def dashboard_summary():
     available_assets = asset_model.get_available_count()
     overdue_inspections = inspection_model.get_overdue_count()
     recent_transactions = _serialize_rows(transaction_model.get_recent(5))
-    upcoming_inspections = _serialize_rows(inspection_model.get_upcoming(30))
+
+    # Fetch all inspections with Valid_till >= today (not limited to 30 days)
+    conn_dash = get_connection()
+    cursor_dash = conn_dash.cursor(dictionary=True)
+    try:
+        cursor_dash.execute(
+            "SELECT ir.*, a.Registration_no "
+            "FROM Inspection_Record ir "
+            "LEFT JOIN Aircraft a ON ir.Aircraft_id = a.Aircraft_id "
+            "WHERE ir.Valid_till >= CURDATE() "
+            "ORDER BY ir.Valid_till LIMIT 5"
+        )
+        upcoming_inspections = _serialize_rows(cursor_dash.fetchall())
+    finally:
+        cursor_dash.close()
+        conn_dash.close()
 
     return {
         "total_aircraft": total_aircraft,

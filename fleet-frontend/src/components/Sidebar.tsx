@@ -3,15 +3,15 @@ import {
   Building2,
   ClipboardCheck,
   LayoutDashboard,
-  LogOut,
   Package,
   Plane,
   Warehouse,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useMemo } from "react";
 import styles from "./Sidebar.module.css";
+import { useEffect, useState } from "react";
 
 const links: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -23,43 +23,36 @@ const links: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/inspections", label: "Inspections", icon: ClipboardCheck },
 ];
 
-interface StoredUser {
-  full_name?: string;
-  role?: string;
-}
-
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [user, setUser] = useState<{full_name: string, role: string} | null>(null);
 
-  const user = useMemo<StoredUser>(() => {
-    try {
-      const raw = localStorage.getItem("afm_user");
-      return raw ? (JSON.parse(raw) as StoredUser) : {};
-    } catch {
-      return {};
+  useEffect(() => {
+    const userData = localStorage.getItem("afm_user");
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (e) {}
     }
   }, []);
 
-  const fullName = user.full_name ?? "Guest User";
-  const role = user.role ?? "viewer";
-  const initials = fullName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("") || "GU";
-
   const handleLogout = () => {
-    localStorage.clear();
+    localStorage.removeItem("afm_token");
+    localStorage.removeItem("afm_user");
     navigate("/login");
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return "U";
+    return name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
   };
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.logoArea}>
+      <div className={styles.brand}>
         <Plane size={28} color="#7c3aed" />
-        <span className={styles.logoText}>{"Aircraft Fleet\nManagement"}</span>
+        <span>{"Aircraft Fleet\nManagement"}</span>
       </div>
 
       <nav className={styles.nav}>
@@ -69,7 +62,7 @@ export function Sidebar() {
             <NavLink
               key={to}
               to={to}
-              className={`${styles.navItem} ${active ? styles.navItemActive : ""}`}
+              className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -78,13 +71,13 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className={styles.userArea}>
-        <div className={styles.avatar}>{initials}</div>
-        <div>
-          <div className={styles.userName}>{fullName}</div>
-          <div className={styles.userRole}>{role}</div>
+      <div className={styles.userCard}>
+        <div className={styles.userAvatar}>{getInitials(user?.full_name || "")}</div>
+        <div className={styles.userInfo}>
+          <div className={styles.userName}>{user?.full_name || "User"}</div>
+          <div className={styles.userRole}>{user?.role || "viewer"}</div>
         </div>
-        <LogOut className={styles.logoutIcon} size={16} onClick={handleLogout} />
+        <LogOut size={16} color="rgba(255,255,255,0.45)" className={styles.logoutIcon} onClick={handleLogout} />
       </div>
     </aside>
   );

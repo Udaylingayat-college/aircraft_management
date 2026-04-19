@@ -1,6 +1,5 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
-import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Dashboard } from "./pages/Dashboard";
 import { Units } from "./pages/Units";
 import { Hangars } from "./pages/Hangars";
@@ -11,12 +10,22 @@ import { Inspections } from "./pages/Inspections";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem("afm_token");
+  const location = useLocation();
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/units" element={<Units />} />

@@ -15,7 +15,7 @@ from mysql.connector import Error
 BASE_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "",
+    "password": "7879",
 }
 
 DATABASE = "Aircraft_Fleet_MS"
@@ -25,6 +25,16 @@ CREATE_DATABASE = f"CREATE DATABASE IF NOT EXISTS {DATABASE}"
 USE_DATABASE = f"USE {DATABASE}"
 
 CREATE_TABLES = [
+    """
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      full_name VARCHAR(100) NOT NULL,
+      email VARCHAR(150) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      role ENUM('admin', 'engineer', 'viewer') NOT NULL DEFAULT 'viewer',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS Unit (
         Unit_id   INT          PRIMARY KEY,

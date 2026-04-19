@@ -12,7 +12,7 @@ from mysql.connector import Error, pooling
 DB_CONFIG = {
     "host": "localhost",
     "user": "root",
-    "password": "",
+    "password": "7879",
     "database": "Aircraft_Fleet_MS",
 }
 
